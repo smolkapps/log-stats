@@ -1,0 +1,11 @@
+192.168.1.10 - - [10/Oct/2000:13:55:36 -0700] "GET /index.html HTTP/1.1" 200 2326 "https://example.com/" "Mozilla/5.0 (Macintosh)"
+192.168.1.10 - - [10/Oct/2000:13:58:01 -0700] "GET /style.css HTTP/1.1" 200 1024 "https://example.com/index.html" "Mozilla/5.0 (Macintosh)"
+192.168.1.11 - alice [10/Oct/2000:14:02:15 -0700] "GET /index.html HTTP/1.1" 200 2326 "https://google.com/" "Mozilla/5.0 (Windows NT 10.0)"
+192.168.1.12 - - [10/Oct/2000:14:30:00 -0700] "POST /api/login HTTP/1.1" 302 0 "https://example.com/login" "curl/7.64.1"
+192.168.1.11 - alice [10/Oct/2000:14:45:22 -0700] "GET /dashboard HTTP/1.1" 200 5120 "https://example.com/index.html" "Mozilla/5.0 (Windows NT 10.0)"
+this is a malformed line that should be skipped
+
+192.168.1.13 - - [10/Oct/2000:15:10:45 -0700] "GET /missing-page HTTP/1.1" 404 491 "-" "Googlebot/2.1"
+192.168.1.10 - - [10/Oct/2000:15:12:00 -0700] "GET /index.html HTTP/1.1" 200 2326 "https://example.com/" "Mozilla/5.0 (Macintosh)"
+192.168.1.14 - - [10/Oct/2000:15:30:18 -0700] "GET /api/data HTTP/1.1" 500 0 "-" "python-requests/2.25.1"
+192.168.1.12 - - [10/Oct/2000:16:00:00 -0700] "GET /favicon.ico HTTP/1.1" 304 - "-" "curl/7.64.1"
