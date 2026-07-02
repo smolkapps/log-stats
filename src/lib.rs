@@ -12,7 +12,9 @@ pub mod stats;
 use chrono::{DateTime, FixedOffset};
 
 pub use parser::{detect_format, parse_line, Entry, LogFormat, ParseOutcome};
-pub use stats::{aggregate, group_by_capture, Counted, HourBucket, Report};
+pub use stats::{
+    aggregate, group_by_capture, largest_responses, Counted, HourBucket, Report, SizedRequest,
+};
 
 /// A half-open time window `[since, until)` used to filter entries.
 ///
