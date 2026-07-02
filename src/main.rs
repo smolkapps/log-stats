@@ -14,7 +14,9 @@ use regex::Regex;
 use serde::Serialize;
 
 use log_stats::parser::{detect_format, parse_line, Entry, LogFormat, ParseOutcome};
-use log_stats::stats::{aggregate, group_by_capture, Counted, Report};
+use log_stats::stats::{
+    aggregate, group_by_capture, largest_responses, Counted, Report, SizedRequest,
+};
 use log_stats::{parse_time_bound, TimeFilter};
 
 /// Analyze Apache/Nginx access logs and report statistics.
@@ -60,6 +62,12 @@ struct Cli {
     /// across all input lines (works on ANY log, not just access logs).
     #[arg(long, value_name = "REGEX")]
     group: Option<String>,
+
+    /// Also report the `--top` individual requests with the largest response
+    /// sizes (by bytes). Adds a section to the text report and a
+    /// `largest_responses` array to `--json`.
+    #[arg(long)]
+    largest: bool,
 }
 
 /// Read all input lines from the given files, or stdin when none/`-`.
@@ -192,15 +200,71 @@ fn run() -> Result<()> {
     }
 
     let report = aggregate(&entries, cli.top, malformed, blank);
+    let largest = if cli.largest {
+        Some(largest_responses(&entries, cli.top))
+    } else {
+        None
+    };
 
     if cli.json {
         let mut stdout = io::stdout().lock();
-        serde_json::to_writer_pretty(&mut stdout, &report)?;
+        if let Some(largest) = &largest {
+            // Splice the extra list into the report object rather than nesting,
+            // so the JSON shape is a superset of the default one.
+            #[derive(Serialize)]
+            struct FullReport<'a> {
+                #[serde(flatten)]
+                report: &'a Report,
+                largest_responses: &'a [SizedRequest],
+            }
+            serde_json::to_writer_pretty(
+                &mut stdout,
+                &FullReport {
+                    report: &report,
+                    largest_responses: largest,
+                },
+            )?;
+        } else {
+            serde_json::to_writer_pretty(&mut stdout, &report)?;
+        }
         writeln!(stdout)?;
     } else {
         print_report(&report, format, cli.top)?;
+        if let Some(largest) = &largest {
+            print_largest(largest)?;
+        }
     }
 
+    Ok(())
+}
+
+/// Render the "Largest responses" section (opt-in via `--largest`).
+fn print_largest(items: &[SizedRequest]) -> Result<()> {
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+    writeln!(out, "\nLargest responses (by bytes):")?;
+    if items.is_empty() {
+        writeln!(out, "  (none)")?;
+        return Ok(());
+    }
+    let width = items
+        .iter()
+        .map(|r| r.bytes.to_string().len())
+        .max()
+        .unwrap_or(1);
+    for r in items {
+        let method = r.method.as_deref().unwrap_or("-");
+        let path = r.path.as_deref().unwrap_or("-");
+        writeln!(
+            out,
+            "  {:>width$}  {:>3} {} {}",
+            r.bytes,
+            r.status,
+            method,
+            path,
+            width = width
+        )?;
+    }
     Ok(())
 }
 

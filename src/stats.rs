@@ -183,6 +183,54 @@ where
     }
 }
 
+/// A single request singled out by response size, for the "largest responses"
+/// report. Unlike the frequency lists, this identifies *individual* requests
+/// rather than aggregating by key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SizedRequest {
+    /// Response size in bytes (the sort key).
+    pub bytes: u64,
+    /// HTTP status code of the response.
+    pub status: u16,
+    /// Request method, e.g. `GET`. `None` when the request line was malformed.
+    pub method: Option<String>,
+    /// Request path, e.g. `/big.iso`. `None` when the request line was empty.
+    pub path: Option<String>,
+    /// Client IP that made the request.
+    pub ip: String,
+}
+
+/// The `top` individual requests with the largest response sizes, descending.
+///
+/// Entries whose byte count was logged as `-` (i.e. `bytes == None`) are
+/// excluded — we only rank responses whose size is actually known. Ties on
+/// byte size are broken by path then IP for deterministic output.
+pub fn largest_responses<'a, I>(entries: I, top: usize) -> Vec<SizedRequest>
+where
+    I: IntoIterator<Item = &'a Entry>,
+{
+    let mut v: Vec<SizedRequest> = entries
+        .into_iter()
+        .filter_map(|e| {
+            e.bytes.map(|bytes| SizedRequest {
+                bytes,
+                status: e.status,
+                method: e.method.clone(),
+                path: e.path.clone(),
+                ip: e.ip.clone(),
+            })
+        })
+        .collect();
+    v.sort_by(|a, b| {
+        b.bytes
+            .cmp(&a.bytes)
+            .then_with(|| a.path.cmp(&b.path))
+            .then_with(|| a.ip.cmp(&b.ip))
+    });
+    v.truncate(top);
+    v
+}
+
 /// Frequency of a captured regex group across a set of lines.
 ///
 /// Returns the descending `(value, count)` list (capped at `top`) plus the
@@ -373,6 +421,39 @@ mod tests {
         assert_eq!(matched, 5);
         assert_eq!(counts[0].key, "ERROR");
         assert_eq!(counts[0].count, 3);
+    }
+
+    #[test]
+    fn largest_responses_ranks_by_bytes() {
+        let (e, _, _) = entries_from(SAMPLE);
+        let l = largest_responses(&e, 3);
+        assert_eq!(l.len(), 3);
+        // biggest is /boom? no — SAMPLE bytes: 1000,1000,2000,0,500,0,1000.
+        // largest is /about.html at 2000, then three at 1000.
+        assert_eq!(l[0].bytes, 2000);
+        assert_eq!(l[0].path.as_deref(), Some("/about.html"));
+        assert_eq!(l[0].status, 200);
+        // descending order
+        assert!(l[0].bytes >= l[1].bytes && l[1].bytes >= l[2].bytes);
+    }
+
+    #[test]
+    fn largest_responses_excludes_missing_bytes() {
+        // An entry whose bytes were logged as `-` must not appear.
+        let line = r#"9.9.9.9 - - [10/Oct/2000:13:00:00 -0700] "GET /nobytes HTTP/1.1" 200 -"#;
+        let (mut e, _, _) = entries_from(SAMPLE);
+        e.extend(entries_from(&[line]).0);
+        let l = largest_responses(&e, 100);
+        assert!(l.iter().all(|r| r.path.as_deref() != Some("/nobytes")));
+        // every SAMPLE entry reported a byte count, plus none for the new one
+        assert_eq!(l.len(), 7);
+    }
+
+    #[test]
+    fn largest_responses_respects_top_and_empty() {
+        let (e, _, _) = entries_from(SAMPLE);
+        assert!(largest_responses(&e, 2).len() <= 2);
+        assert!(largest_responses(std::iter::empty::<&Entry>(), 5).is_empty());
     }
 
     #[test]

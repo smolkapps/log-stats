@@ -236,6 +236,84 @@ fn since_until_time_filter() {
 }
 
 #[test]
+fn largest_flag_adds_json_array() {
+    let out = Command::cargo_bin("log-stats")
+        .unwrap()
+        .arg(sample_path())
+        .arg("--largest")
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+
+    // The default report shape is preserved (superset), plus the new array.
+    assert_eq!(v["total_requests"], 9);
+    let largest = v["largest_responses"].as_array().unwrap();
+    // 8 of the 9 entries reported a byte count (favicon.ico logged `-`).
+    assert_eq!(largest.len(), 8);
+    // /dashboard at 5120 is the single largest response.
+    assert_eq!(v["largest_responses"][0]["bytes"], 5120);
+    assert_eq!(v["largest_responses"][0]["path"], "/dashboard");
+    assert_eq!(v["largest_responses"][0]["status"], 200);
+    assert_eq!(v["largest_responses"][0]["method"], "GET");
+    // The `-` byte entry (favicon.ico) is excluded entirely.
+    assert!(largest
+        .iter()
+        .all(|r| r["path"].as_str() != Some("/favicon.ico")));
+}
+
+#[test]
+fn largest_flag_respects_top() {
+    let out = Command::cargo_bin("log-stats")
+        .unwrap()
+        .arg(sample_path())
+        .arg("--largest")
+        .arg("--top")
+        .arg("2")
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["largest_responses"].as_array().unwrap().len(), 2);
+    assert_eq!(v["largest_responses"][0]["bytes"], 5120);
+}
+
+#[test]
+fn largest_flag_text_section() {
+    Command::cargo_bin("log-stats")
+        .unwrap()
+        .arg(sample_path())
+        .arg("--largest")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Largest responses (by bytes):"))
+        .stdout(predicate::str::contains("5120"))
+        .stdout(predicate::str::contains("/dashboard"));
+}
+
+#[test]
+fn no_largest_flag_omits_section() {
+    // Without --largest, neither the text section nor the JSON field appear.
+    let out = Command::cargo_bin("log-stats")
+        .unwrap()
+        .arg(sample_path())
+        .arg("--json")
+        .output()
+        .unwrap();
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(v.get("largest_responses").is_none());
+
+    Command::cargo_bin("log-stats")
+        .unwrap()
+        .arg(sample_path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Largest responses").not());
+}
+
+#[test]
 fn missing_file_errors() {
     Command::cargo_bin("log-stats")
         .unwrap()

@@ -34,6 +34,7 @@ If no files are given (or `-`), input is read from **stdin**.
 | `--until TIME` | Only include requests before `TIME` (exclusive). |
 | `--format FMT` | `combined`, `common`, or `auto` (default, detects from the first lines). |
 | `--group REGEX` | Generic mode: frequency of capture group 1 across all input lines. |
+| `--largest` | Also report the `--top` individual requests with the largest response sizes (by bytes). |
 
 `TIME` accepts the CLF stamp (`10/Oct/2000:13:55:36 -0700`), ISO-8601
 (`2000-10-10T13:55:36-07:00`), `YYYY-MM-DD HH:MM:SS` (UTC), or `YYYY-MM-DD`.
@@ -71,6 +72,9 @@ cat access.log | log-stats
 
 # Generic: count log levels in any log
 log-stats app.log --group '^\S+ \S+ (\w+)'
+
+# Surface the heaviest responses (bandwidth hogs)
+log-stats access.log --largest --top 5
 ```
 
 ## JSON shape
@@ -80,6 +84,8 @@ log-stats app.log --group '^\S+ \S+ (\w+)'
 `status_classes`, `top_status_codes`, `top_user_agents`, `top_referers`,
 `total_bytes`, `mean_bytes`, `requests_per_hour` (24 buckets), and
 `error_rate`. Each "top" list is an array of `{ "key": ..., "count": ... }`.
+With `--largest`, an additional `largest_responses` array is included, each
+element `{ "bytes", "status", "method", "path", "ip" }`.
 
 `--group --json` emits `{ pattern, matched_lines, total_lines, groups }`.
 
